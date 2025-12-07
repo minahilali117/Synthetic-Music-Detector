@@ -1,0 +1,120 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+.jupyter/
+
+# IPython
+profile_default/
+ipython_config.py
+
+# PyTorch
+*.pth
+*.pt
+*.ckpt
+
+# Virtual Environment
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Project-specific: Large files and datasets
+Dataset/
+datasets/
+data/
+*.wav
+*.mp3
+*.flac
+*.ogg
+
+# Project-specific: Generated outputs
+output/
+outputs/
+checkpoints/
+embeddings/
+results/
+*.npz
+*.npy
+*.pkl
+*.pickle
+
+# Project-specific: Large model files
+*.h5
+*.hdf5
+*.safetensors
+
+# Logs
+*.log
+logs/
+wandb/
+
+# System
+Thumbs.db
+.DS_Store
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/
+
+# Compressed files (if datasets are compressed)
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+
+# Notebook outputs (optional - uncomment if you want clean notebooks)
+# *.ipynb
+
+# Cache
+.cache/
+*.cache
+
+# Environment variables
+.env
+.env.local
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Documentation builds
+docs/_build/

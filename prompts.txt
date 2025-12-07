@@ -1,0 +1,419 @@
+================================================================================
+SYNTHETIC MUSIC DETECTION - AI-ASSISTED DEVELOPMENT PROMPTS
+================================================================================
+
+This document contains the prompts used to develop this project using AI assistance.
+The prompts demonstrate effective prompt engineering techniques including:
+- Role assignment and context setting
+- Structured requirements and constraints
+- Iterative refinement and error handling
+- Technical precision and domain-specific language
+- Multi-task decomposition
+
+
+================================================================================
+PROMPT 1: PROJECT PLANNING AND PHASE DECOMPOSITION
+================================================================================
+
+I need to build a binary classification system to detect AI-generated vs human-composed music. I have 4000 audio files (2000 AI-generated from MusicGen, 2000 human-composed from FMA dataset). The project should use deep learning and PyTorch.
+
+Requirements:
+1. Use mel-spectrograms as input features (not raw audio)
+2. Implement multiple approaches for comparison:
+   - CNN baseline
+   - Autoencoder for unsupervised feature learning
+   - Transformer-based embeddings
+   - Hybrid model combining different features
+3. Prevent data leakage (songs have multiple 5-second segments)
+4. Generate comprehensive evaluation metrics and visualizations
+5. The code should run in a Jupyter notebook with clear phase separation
+
+Please help me:
+1. Break this project into logical phases with estimated runtimes
+2. Define the data flow between phases
+3. Identify dependencies (which phases must complete before others)
+4. Suggest which phases can run in parallel
+5. Create a structured notebook outline with clear phase headers
+
+Include considerations for:
+- GPU memory constraints
+- Checkpoint saving/loading to avoid re-running expensive phases
+- Progress tracking and error handling
+- Preprocessing data once and caching it
+
+
+================================================================================
+PROMPT 2: PHASE 1 - DATA PREPROCESSING PIPELINE
+================================================================================
+
+Act as an audio ML engineer. Design a complete preprocessing pipeline for Phase 1 that:
+
+INPUTS:
+- 4000 WAV files in two directories:
+  * Dataset/Human Music/fma_2000_5sec_dataset/
+  * Dataset/Ai music/musicgen_10k_dataset/
+- Each file is a 5-second audio clip at varying sample rates
+
+REQUIREMENTS:
+1. Load and validate all audio files using librosa
+2. Resample all audio to 16kHz for consistency
+3. Extract mel-spectrograms with these exact specifications:
+   - n_mels=128 (frequency bins)
+   - hop_length=512
+   - n_fft=2048
+   - Target length: match 5 seconds at 16kHz
+4. Normalize spectrograms using log-mel transformation
+5. Implement GROUP-AWARE train/val/test split (70/15/15):
+   - Critical: Files from same song must stay in same split
+   - Extract group IDs from filenames (e.g., "fma_001_seg1.wav", "fma_001_seg2.wav" belong to group "fma_001")
+   - This prevents data leakage
+6. Save preprocessed data as compressed .npz file with:
+   - train_X, train_y
+   - val_X, val_y
+   - test_X, test_y
+   - metadata (splits info, file paths, group IDs)
+
+DELIVERABLES:
+- Data loading functions with tqdm progress bars
+- Validation function to check audio integrity and handle corrupted files
+- Dataset class for PyTorch (returns spectrograms and labels)
+- Split function that groups by song ID
+- Save/load functions for .npz format
+
+ERROR HANDLING:
+- Skip corrupted audio files and log them
+- Handle variable-length audio (pad or truncate to 5 seconds)
+- Check for sufficient disk space before saving
+
+Provide complete, production-ready code with docstrings.
+
+
+================================================================================
+PROMPT 3: PHASE 2A - MULTI-TASK AUTOENCODER DESIGN
+================================================================================
+
+I need to improve my autoencoder approach. Previously I trained it only on human music for reconstruction, which creates bias toward human music features.
+
+Design a MULTI-TASK autoencoder that:
+
+CONCEPTUAL IMPROVEMENT:
+- Train on ALL music (both AI and human), not just one class
+- Optimize for TWO objectives simultaneously:
+  1. Reconstruction loss (MSE) - learns general music features
+  2. Classification loss (CrossEntropy) - learns discriminative features
+- This creates latent representations useful for BOTH reconstruction and discrimination
+
+ARCHITECTURE REQUIREMENTS:
+1. Input: Mel-spectrogram (batch, 1, 128, time_steps)
+2. Encoder:
+   - 4 convolutional layers
+   - Increasing channels: 1→32→64→128→256
+   - Batch normalization after each conv
+   - ReLU activation
+   - MaxPooling (kernel=2, stride=2)
+   - Dropout (0.25, 0.25, 0.3, 0.3)
+3. Latent bottleneck: 256-dimensional vector
+4. Decoder (symmetric to encoder):
+   - 4 transposed convolutional layers
+   - Decreasing channels: 256→128→64→32→1
+   - Output: reconstructed spectrogram (same shape as input)
+5. Classification head (branches from latent):
+   - MLP: 256→128→2 (binary classification)
+   - BatchNorm, ReLU, Dropout(0.4)
+
+TRAINING STRATEGY:
+- Combined loss: total_loss = reconstruction_loss + 0.5 * classification_loss
+- Optimizer: Adam with learning rate 1e-4
+- Batch size: 32
+- Early stopping: patience=5 on combined validation loss
+- Save checkpoints: last model + best model
+
+OUTPUTS NEEDED:
+1. Model checkpoint: ae_multitask_best.pth
+2. Cached latent vectors for all samples: ae_latents.npz (train/val/test)
+3. Reconstruction losses per sample: ae_losses.npz (useful for anomaly detection)
+4. Training curves: loss plots for both objectives
+
+Provide:
+- Complete PyTorch model class with forward() returning (reconstruction, logits, latent)
+- Training loop with dual loss calculation
+- Extraction function to compute and save all latents
+- Visualization of reconstructions (original vs reconstructed, 5 examples each class)
+
+Explain why this multi-task approach creates better features than single-task reconstruction.
+
+
+================================================================================
+PROMPT 4: PHASE 2B - AUDIO SPECTROGRAM TRANSFORMER (REAL TRANSFORMER)
+================================================================================
+
+I need to implement a REAL transformer encoder, not a CNN. Specifically, I want to use the Audio Spectrogram Transformer (AST) from MIT.
+
+CRITICAL REQUIREMENTS:
+1. Use pre-trained AST model from HuggingFace: "MIT/ast-finetuned-audioset-10-10-0.4593"
+2. This is a Vision Transformer (ViT) adapted for audio spectrograms
+3. Architecture details I need you to implement:
+   - 12 transformer encoder blocks
+   - Multi-head self-attention (12 heads)
+   - Patch-based processing: spectrograms are split into 16x16 patches
+   - [CLS] token for global representation
+   - Pre-trained on AudioSet (2 million audio clips, 527 event classes)
+4. The model expects input shape: (batch, 128, 1024) mel-spectrograms
+5. Extract the [CLS] token embedding (768-dim) from the final layer
+6. Project to desired embedding dimension (512-dim) using linear layer
+
+IMPLEMENTATION REQUIREMENTS:
+1. Load pre-trained AST from transformers library
+2. Create wrapper class that:
+   - Handles input interpolation if time dimension != 1024
+   - Freezes backbone layers (option to fine-tune)
+   - Extracts [CLS] token
+   - Projects to 512-dim
+3. Provide TWO modes:
+   - Frozen features: Fast, use pre-trained representations
+   - Fine-tuning: Slower, adapt to our specific task
+4. Save extracted embeddings for all samples: transformer_embeddings.npz
+
+ERROR HANDLING:
+- If AST import fails (missing dependencies), provide fallback CNN encoder
+- Clear error messages explaining how to fix torchaudio/CUDA issues
+- Verify input dimensions and add interpolation if needed
+
+DELIVERABLES:
+- ASTTransformerEncoder class with proper forward()
+- Function to extract and cache embeddings for all splits
+- Comparison: Show embedding visualization using t-SNE (frozen vs fine-tuned)
+- Architecture diagram explaining why this is a REAL transformer
+
+IMPORTANT: Include detailed comments explaining:
+- How self-attention works on spectrogram patches
+- Difference between this and CNN feature extraction
+- Why AudioSet pre-training is beneficial for our task
+
+
+================================================================================
+PROMPT 5: PHASE 3 - BASELINE MODEL IMPLEMENTATIONS
+================================================================================
+
+Create three baseline classifier models for fair comparison in our synthetic music detection task. Each model should be independently trained and evaluated.
+
+BASELINE 1: CNN CLASSIFIER
+- Direct classification from mel-spectrograms (no pre-training)
+- Architecture:
+  * 4 conv blocks (32→64→128→256 channels)
+  * BatchNorm + ReLU + MaxPool(2,2) + Dropout
+  * Dropout rates: 0.25, 0.25, 0.3, 0.3
+  * Global Average Pooling to handle variable time dimensions
+  * MLP classifier: flattened→256→128→2
+- Training: Adam optimizer (lr=1e-4), batch_size=32, epochs=50
+- Early stopping: patience=5 on validation accuracy
+
+BASELINE 2: AE-LATENT CLASSIFIER
+- Uses pre-extracted 256-dim autoencoder latent vectors
+- Simple MLP architecture:
+  * Input: 256-dim latent from Phase 2A
+  * Hidden layers: 256→128→64→2
+  * BatchNorm after each layer
+  * Dropout: 0.4 after each hidden layer
+- Training: Adam (lr=1e-3), batch_size=64, epochs=30
+- Fast to train since features are pre-extracted
+
+BASELINE 3: TRANSFORMER-EMBEDDING CLASSIFIER
+- Uses pre-extracted 512-dim transformer embeddings
+- Deeper MLP (transformer features are richer):
+  * Input: 512-dim embedding from Phase 2B
+  * Hidden layers: 512→256→128→2
+  * BatchNorm after each layer
+  * Dropout: 0.4 after each hidden layer
+- Training: Adam (lr=1e-3), batch_size=64, epochs=30
+
+UNIFIED REQUIREMENTS FOR ALL BASELINES:
+1. Training loop with:
+   - Per-epoch metrics (loss, accuracy)
+   - Validation after each epoch
+   - Progress bars (tqdm)
+   - Checkpoint saving (last + best based on val_acc)
+2. Early stopping with patience=5
+3. Training curves: plot loss and accuracy (train vs val)
+4. Final evaluation on test set: accuracy, precision, recall, F1
+
+DELIVERABLES:
+- Three PyTorch model classes
+- Unified training function that works for all three (pass model, data, config)
+- Data loading: For CNN use spectrograms, for AE/Trans use cached embeddings
+- Save checkpoints:
+  * checkpoints/cnn_best.pth
+  * checkpoints/ae_classifier_best.pth
+  * checkpoints/transformer_classifier_best.pth
+- Generate training curves (matplotlib): 2x3 grid showing all models
+
+CODE STRUCTURE:
+```python
+def train_baseline(model, train_loader, val_loader, config):
+    # Unified training loop for all baselines
+    pass
+
+# Usage:
+train_baseline(cnn_model, spectrogram_loaders, config_cnn)
+train_baseline(ae_clf_model, ae_latent_loaders, config_ae)
+train_baseline(trans_clf_model, trans_embed_loaders, config_trans)
+```
+
+Ensure fair comparison: same train/val/test splits, same evaluation metrics, same stopping criteria.
+
+
+================================================================================
+PROMPT 6: PHASE 4 - HYBRID MODEL WITH ATTENTION FUSION
+================================================================================
+
+Design an IMPROVED hybrid model that intelligently fuses autoencoder and transformer features. Previous naive concatenation treats all features equally, but we should learn which features are more discriminative.
+
+PROBLEM WITH NAIVE FUSION:
+- Simple concatenation: [ae_features; trans_features] → MLP
+- Assumes both feature sources are equally important
+- Doesn't adapt to different samples (some might benefit more from AE, others from Transformer)
+
+SOLUTION: ATTENTION-BASED FUSION
+
+ATTENTION MECHANISM:
+1. Input features:
+   - ae_features: (batch, 256) from autoencoder latents
+   - trans_features: (batch, 512) from transformer embeddings
+2. Project both to common space (256-dim) for attention scoring
+3. Compute attention scores using small MLP:
+   - ae_score = MLP(ae_proj) → (batch, 1)
+   - trans_score = MLP(trans_proj) → (batch, 1)
+4. Apply softmax to get normalized weights:
+   - weights = softmax([ae_score, trans_score], dim=1) → (batch, 2)
+5. Weight original features:
+   - ae_weighted = ae_features * weights[:, 0:1]
+   - trans_weighted = trans_features * weights[:, 1:2]
+6. Concatenate weighted features: (batch, 768)
+7. Pass through classifier MLP
+
+ARCHITECTURE DETAILS:
+
+AttentionFusion Module:
+- ae_proj: Linear(256, 256)
+- trans_proj: Linear(512, 256)
+- attention_mlp: 256→128(Tanh)→1
+- Output: weighted features (batch, 256+512) + attention weights
+
+HybridClassifier:
+- Fusion layer (attention-based)
+- Classifier MLP: 768→512→256→128→2
+- BatchNorm after each linear layer
+- Dropout: 0.5, 0.4, 0.3 (decreasing through layers)
+
+TRAINING:
+- Optimizer: Adam (lr=5e-4)
+- Batch size: 64
+- Epochs: 30
+- Early stopping: patience=7
+
+DELIVERABLES:
+1. AttentionFusion class with interpretable attention weights
+2. HybridClassifier combining both components
+3. Training code that loads cached features from Phase 2A and 2B
+4. Analysis of attention weights:
+   - Average attention per class (AI vs Human)
+   - Visualization: "Model attends X% to AE, Y% to Transformer"
+   - Per-sample attention heatmap
+5. Save checkpoint: checkpoints/hybrid_best.pth
+
+ADVANCED (OPTIONAL): End-to-End Fine-Tuning
+- Unfreeze AE encoder and Transformer encoder
+- Fine-tune entire pipeline jointly
+- Slower but potentially better performance
+
+ANALYSIS QUESTIONS TO ANSWER:
+1. Does the model attend more to AE or Transformer features?
+2. Is attention different for AI vs Human samples?
+3. Which samples have high uncertainty (similar attention to both sources)?
+4. Does attention-based fusion outperform naive concatenation?
+
+Provide complete code with attention weight extraction and visualization.
+
+
+================================================================================
+PROMPT 7: PHASE 5 - COMPREHENSIVE EVALUATION AND VISUALIZATION
+================================================================================
+
+Create a thorough evaluation suite that compares all four models and generates publication-ready visualizations.
+
+MODELS TO EVALUATE:
+1. CNN Baseline (from Phase 3)
+2. AE Classifier (from Phase 3)
+3. Transformer Classifier (from Phase 3)
+4. Hybrid with Attention (from Phase 4)
+
+METRICS (per model, on test set):
+- Accuracy
+- Precision (for both classes)
+- Recall (for both classes)
+- F1-Score (macro and per-class)
+- ROC-AUC
+- Confusion Matrix
+
+VISUALIZATIONS (all saved as PNG at 150 DPI):
+
+1. CONFUSION MATRICES (2x2 grid):
+   - One heatmap per model
+   - Use seaborn with annotations
+   - Color scale: white (0) to dark blue (100%)
+   - Title: "Model Name - Accuracy: XX.XX%"
+
+2. ROC CURVES (single plot):
+   - All 4 models on same axes
+   - Legend includes AUC scores
+   - Diagonal reference line
+   - Labels: "False Positive Rate" vs "True Positive Rate"
+
+3. t-SNE VISUALIZATIONS (1x3 grid):
+   - AE latent space (256-dim → 2D)
+   - Transformer embedding space (512-dim → 2D)
+   - Hybrid attention-weighted space (768-dim → 2D)
+   - Color: Blue=Human, Red=AI
+   - Use sklearn.manifold.TSNE with perplexity=30
+   - Sample 1000 points (t-SNE is slow on large datasets)
+
+4. METRICS COMPARISON BAR CHART:
+   - X-axis: Models
+   - Y-axis: Metric value (0-1)
+   - Grouped bars for Accuracy, Precision, Recall, F1
+   - Different color for each metric
+   - Error bars if cross-validation is used
+
+5. ATTENTION ANALYSIS (for Hybrid model):
+   - Bar chart: Average attention weights (AE vs Transformer)
+   - Split by class: AI samples vs Human samples
+   - Show if model relies more on certain features for certain classes
+
+EXPORT FORMATS:
+
+1. CSV: model_comparison_table.csv
+   Columns: Model, Accuracy, Precision_AI, Precision_Human, Recall_AI, Recall_Human, F1_Macro, ROC_AUC
+   Sorted by accuracy (descending)
+
+IMPLEMENTATION REQUIREMENTS:
+- Use sklearn.metrics for all metrics
+- Create results/ directory if it doesn't exist
+- All plots saved with descriptive filenames
+- Use consistent color scheme across visualizations
+- Add grid lines, legends, and titles to all plots
+- Print summary table to console (formatted with tabulate or similar)
+
+DELIVERABLES:
+- evaluate_model() function that takes model and returns all metrics
+- visualize_confusion_matrix() for single model
+- plot_roc_curves() for all models
+- plot_tsne() for feature space visualization
+- plot_metrics_comparison() for bar chart
+- save_results() to export CSV and JSON
+- Main evaluation script that calls all functions
+
+Provide complete, well-documented code for each visualization with proper error handling.
+
+================================================================================
+END OF PROMPTS DOCUMENT
+================================================================================
