@@ -67,7 +67,6 @@ output/
 outputs/
 checkpoints/
 embeddings/
-results/
 *.npz
 *.npy
 *.pkl
