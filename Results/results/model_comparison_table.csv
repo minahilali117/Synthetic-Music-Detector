@@ -1,0 +1,5 @@
+Model,Accuracy (%),Precision,Recall,F1-Score,ROC-AUC
+AE Classifier,87.86,0.9459,0.7482,0.8355,0.9530
+Hybrid,86.68,0.9642,0.7031,0.8132,0.9530
+CNN,85.21,0.8668,0.7577,0.8086,0.9255
+Transformer Classifier,82.66,0.8262,0.7340,0.7774,0.8988
